@@ -292,26 +292,49 @@ def download_list():
     )
 
 
+def _can_access_video(video: Video, *, require_ready: bool) -> bool:
+    if require_ready and video.status != "ready":
+        return False
+    if current_user.is_admin:
+        return True
+    if current_user.is_manager and video.uploader_id == current_user.id:
+        return True
+    if (
+        current_user.is_farmer
+        and video.farmer_id == current_user.id
+        and get_setting("enable_farmer_download", "1") == "1"
+        and video.status == "ready"
+    ):
+        return True
+    return False
+
+
+@bp.route("/<int:video_id>/preview")
+@login_required
+@manager_or_admin
+def preview(video_id: int):
+    """Stream video inline for in-page preview (uploaded or ready)."""
+    video = Video.query.get_or_404(video_id)
+    if not _can_access_video(video, require_ready=False):
+        abort(403)
+
+    path = Path(video.stored_path)
+    if not path.is_file():
+        abort(404)
+
+    return send_file(
+        path,
+        as_attachment=False,
+        conditional=True,
+        download_name=video.original_filename,
+    )
+
+
 @bp.route("/<int:video_id>/file")
 @login_required
 def download_file(video_id: int):
     video = Video.query.get_or_404(video_id)
-    if video.status != "ready":
-        abort(404)
-
-    allowed = False
-    if current_user.is_admin:
-        allowed = True
-    elif current_user.is_manager and video.uploader_id == current_user.id:
-        allowed = True
-    elif (
-        current_user.is_farmer
-        and video.farmer_id == current_user.id
-        and get_setting("enable_farmer_download", "1") == "1"
-    ):
-        allowed = True
-
-    if not allowed:
+    if not _can_access_video(video, require_ready=True):
         abort(403)
 
     path = Path(video.stored_path)

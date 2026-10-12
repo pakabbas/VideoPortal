@@ -443,6 +443,52 @@ th {
   text-align: center;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(18, 28, 20, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.preview-modal[hidden] {
+  display: none !important;
+}
+
+.preview-dialog {
+  width: min(920px, 100%);
+  background: #fff;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 1rem;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+#preview-player {
+  width: 100%;
+  max-height: min(70vh, 520px);
+  background: #0f1a12;
+  border-radius: 10px;
+}
+
 @media (max-width: 900px) {
   .grid-4,
   .grid-3,

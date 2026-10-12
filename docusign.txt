@@ -1,0 +1,147 @@
+Video Portal — DocuSign (when it appears & how it works)
+========================================================
+Last updated: 2026-10-12
+
+
+1) What DocuSign is for (in this app)
+------------------------------------
+DocuSign is NOT used on every video upload.
+
+It is used once per MANAGER for a blanket “upload agreement”:
+  - The manager signs one agreement that covers ALL future video uploads.
+  - After that signature is completed, uploads are allowed.
+  - Per-upload, managers only check the consent checkbox (stored in our DB).
+
+This matches requirements.md:
+  “Blanket agreement … manager signs one agreement … during sign-up …
+   before he can upload any videos.”
+
+
+2) When you will see DocuSign in the UI
+--------------------------------------
+You will NOT see a DocuSign button when logged in as ADMIN.
+
+DocuSign / Agreement UI is for MANAGER accounts only:
+
+  A) Top nav → “Agreement”
+     URL: /videoportal/agreements/
+     Visible only if role = manager.
+
+  B) Dashboard warning (managers who have not signed yet)
+     “Sign the blanket upload agreement before you can upload videos.”
+     Link → Agreement page.
+
+  C) Upload gate
+     If a manager opens Upload before signing:
+       /videoportal/videos/upload
+     they are redirected to the Agreement page.
+
+  D) Admin → Configurations
+     Shows whether DocuSign sandbox credentials are configured
+     (Integration key, User ID, Account ID, RSA key, agreement PDF).
+     Admins do not sign here; they only monitor / configure.
+
+As admin you create managers; each manager must sign after their first login.
+
+
+3) Why you “can’t find DocuSign” right now
+-----------------------------------------
+Two common reasons:
+
+  1) You are logged in as ADMIN
+     → No “Agreement” nav item. Switch to (or create) a manager user.
+
+  2) DocuSign API credentials are not configured on the server yet
+     → The Agreement page shows:
+         “DocuSign sandbox is not configured…”
+       and offers:
+         “Dev: mark agreement complete”
+       That bypass is for testing until real sandbox keys are added.
+       Real DocuSign signing (“Sign with DocuSign”) only appears when
+       credentials are configured.
+
+Configured = all of these set on the server .env AND RSA key file exists:
+  DOCUSIGN_INTEGRATION_KEY
+  DOCUSIGN_USER_ID
+  DOCUSIGN_ACCOUNT_ID
+  DOCUSIGN_RSA_KEY_PATH  → secrets/docusign_private.key
+
+
+4) End-to-end flow (happy path)
+-------------------------------
+  1. Admin creates a Manager (Users page).
+  2. Manager logs in.
+  3. Manager opens Agreement (/videoportal/agreements/).
+  4. Clicks “Sign with DocuSign” (when sandbox is configured).
+  5. App creates a DocuSign envelope (sandbox) with the manager agreement PDF
+     (or optional template ID from Configurations).
+  6. Manager is redirected to DocuSign embedded signing.
+  7. After signing, DocuSign returns to:
+       /videoportal/agreements/callback
+  8. App marks manager_agreements.status = completed.
+  9. Manager can upload videos freely; consent checkbox still required per upload.
+
+
+5) Free testing (Developer sandbox)
+-----------------------------------
+DocuSign offers a free Developer account / non-expiring demo environment:
+  https://developers.docusign.com/choose-the-right-developer-plan/
+
+Important:
+  - Sandbox (account-d.docusign.com) envelopes are for development/testing.
+  - They are NOT legally binding.
+  - Production (Go-Live) requires a paid plan later — not set up in this MVP.
+
+Auth server used by the app:
+  DOCUSIGN_AUTH_SERVER=account-d.docusign.com
+  DOCUSIGN_BASE_PATH=https://demo.docusign.net/restapi
+
+
+6) How to wire real DocuSign sandbox to this app
+------------------------------------------------
+On GCP3:
+
+  App dir: /var/www/html/leadpilotai/videoportal/
+  Env file: /var/www/html/leadpilotai/videoportal/.env
+
+Steps:
+  1. Create a free DocuSign Developer account.
+  2. In Apps and Keys, create an Integration Key (client ID).
+  3. Generate an RSA key pair; save the PRIVATE key on the server as:
+       /var/www/html/leadpilotai/videoportal/secrets/docusign_private.key
+     chmod 600 that file.
+  4. Grant consent / JWT impersonation for your demo user (DocuSign docs).
+  5. Put into .env:
+       DOCUSIGN_INTEGRATION_KEY=...
+       DOCUSIGN_USER_ID=...          # GUID of the impersonated user
+       DOCUSIGN_ACCOUNT_ID=...       # API Account ID
+       DOCUSIGN_RSA_KEY_PATH=/var/www/html/leadpilotai/videoportal/secrets/docusign_private.key
+       DOCUSIGN_AUTH_SERVER=account-d.docusign.com
+       DOCUSIGN_BASE_PATH=https://demo.docusign.net/restapi
+  6. Optional: set DocuSign Template ID in Admin → Configurations
+     (otherwise app uses static/docs/manager_agreement.pdf).
+  7. Restart:
+       sudo systemctl restart videoportal
+  8. Log in as a manager → Agreement → “Sign with DocuSign” should appear.
+
+
+7) Code / pages map
+-------------------
+  templates/agreements/status.html   Manager Agreement UI
+  app/agreements/routes.py           Start signing, callback, dev-complete
+  app/services/docusign.py           JWT auth + create envelope + status
+  app/videos/routes.py               Blocks upload until agreement completed
+  Admin Configurations               Shows DocuSign setup status + template ID
+  .env.example                       Lists all DOCUSIGN_* variables
+
+
+8) Quick checklist to “see” DocuSign today
+-------------------------------------------
+  [ ] Create a Manager user (Admin → Users)
+  [ ] Log out, log in as that manager
+  [ ] Open nav → Agreement
+  [ ] If credentials missing: use Dev bypass OR configure sandbox keys
+  [ ] After completed: Upload works; Agreement shows status completed
+
+Until sandbox keys are added, you will only see the Agreement page and
+the status panel — not a live DocuSign signing window.

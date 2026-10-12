@@ -3,7 +3,7 @@
 {% block content %}
 <section class="hero-card mb-1">
   <h1>Manage videos</h1>
-  <p class="lede">Processing is a status flip: mark uploaded clips as ready when they can be downloaded.</p>
+  <p class="lede">Preview clips, then mark them ready when they can be downloaded.</p>
 </section>
 
 {% if videos %}
@@ -28,13 +28,22 @@
         <td>{{ v.recorded_at.strftime('%Y-%m-%d %H:%M') }}</td>
         <td><span class="badge badge-{{ v.status }}">{{ v.status }}</span></td>
         <td>
-          {% if v.status != 'ready' %}
-          <form method="post" action="{{ url_for('videos.mark_ready', video_id=v.id) }}">
-            <button class="btn btn-sm" type="submit">Mark ready</button>
-          </form>
-          {% else %}
-          <a class="btn btn-sm btn-secondary" href="{{ url_for('videos.download_file', video_id=v.id) }}">Download</a>
-          {% endif %}
+          <div class="row-actions">
+            <button
+              type="button"
+              class="btn btn-sm btn-secondary"
+              data-preview-url="{{ url_for('videos.preview', video_id=v.id) }}"
+              data-preview-title="{{ v.original_filename }}"
+              onclick="openVideoPreview(this)"
+            >Preview</button>
+            {% if v.status != 'ready' %}
+            <form method="post" action="{{ url_for('videos.mark_ready', video_id=v.id) }}">
+              <button class="btn btn-sm" type="submit">Mark ready</button>
+            </form>
+            {% else %}
+            <a class="btn btn-sm btn-secondary" href="{{ url_for('videos.download_file', video_id=v.id) }}">Download</a>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -44,4 +53,42 @@
 {% else %}
 <div class="empty">No videos yet.</div>
 {% endif %}
+
+<div class="preview-modal" id="preview-modal" hidden>
+  <div class="preview-dialog" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+    <div class="preview-header">
+      <h2 id="preview-title" class="page-title" style="font-size:1.15rem;margin:0">Preview</h2>
+      <button type="button" class="btn btn-sm btn-secondary" onclick="closeVideoPreview()">Close</button>
+    </div>
+    <video id="preview-player" controls playsinline preload="metadata"></video>
+  </div>
+</div>
+
+<script>
+function openVideoPreview(btn) {
+  var modal = document.getElementById('preview-modal');
+  var player = document.getElementById('preview-player');
+  var title = document.getElementById('preview-title');
+  title.textContent = btn.getAttribute('data-preview-title') || 'Preview';
+  player.src = btn.getAttribute('data-preview-url');
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  player.play().catch(function () {});
+}
+function closeVideoPreview() {
+  var modal = document.getElementById('preview-modal');
+  var player = document.getElementById('preview-player');
+  player.pause();
+  player.removeAttribute('src');
+  player.load();
+  modal.hidden = true;
+  document.body.style.overflow = '';
+}
+document.getElementById('preview-modal').addEventListener('click', function (e) {
+  if (e.target.id === 'preview-modal') closeVideoPreview();
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') closeVideoPreview();
+});
+</script>
 {% endblock %}
