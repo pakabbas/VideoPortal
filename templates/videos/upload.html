@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Upload · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="hero-card mb-1">
+  <h1>Upload video</h1>
+  <p class="lede">Tag the farmer who recorded the clip. Consent is recorded with a timestamp and terms version {{ terms_version }}.</p>
+</section>
+
+{% if not farmers %}
+<div class="empty">No farmers available. Create and link farmers first.</div>
+{% else %}
+<form method="post" enctype="multipart/form-data" class="card form-grid">
+  <label>Farmer (who recorded)
+    <select name="farmer_id" required>
+      {% for f in farmers %}
+        <option value="{{ f.id }}">{{ f.full_name }} ({{ f.email }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div class="grid grid-2">
+    <label>Recorded date
+      <input type="date" name="recorded_date" required>
+    </label>
+    <label>Recorded time
+      <input type="time" name="recorded_time" required value="12:00">
+    </label>
+  </div>
+  <label>Video file
+    <input type="file" name="video" accept="video/*" required>
+    <span class="help">Max {{ max_mb }} MB · {{ extensions }}</span>
+  </label>
+  <div class="card" style="background:#fff;box-shadow:none">
+    <p class="help" style="margin-top:0">Consent terms</p>
+    <p>{{ consent_terms }}</p>
+    <label class="checkbox-row">
+      <input type="checkbox" name="consent" value="1" required>
+      <span>I have read and accept these terms for this upload.</span>
+    </label>
+  </div>
+  <button class="btn" type="submit">Upload</button>
+</form>
+{% endif %}
+{% endblock %}

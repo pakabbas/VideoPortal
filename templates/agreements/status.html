@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Agreement · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="hero-card mb-1">
+  <h1>Upload agreement</h1>
+  <p class="lede">Managers sign one blanket DocuSign agreement that covers all future uploads. Signing never blocks an individual upload once completed.</p>
+</section>
+
+<div class="grid grid-2">
+  <div class="card stack">
+    <h2 class="page-title" style="font-size:1.2rem">Your status</h2>
+    {% if agreement %}
+      <p>Status: <span class="badge badge-{{ agreement.status }}">{{ agreement.status }}</span></p>
+      {% if agreement.signed_at %}
+        <p class="help">Signed at {{ agreement.signed_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+      {% endif %}
+      {% if agreement.docusign_envelope_id %}
+        <p class="help">Envelope: {{ agreement.docusign_envelope_id }}</p>
+      {% endif %}
+    {% else %}
+      <p class="lede">No agreement on file yet.</p>
+    {% endif %}
+
+    {% if not agreement or agreement.status != 'completed' %}
+      {% if docusign_status.configured %}
+      <form method="post" action="{{ url_for('agreements.start') }}">
+        <button class="btn" type="submit">Sign with DocuSign</button>
+      </form>
+      {% else %}
+      <div class="flash flash-warning">DocuSign sandbox is not configured. Ask an admin to add credentials in `.env`.</div>
+      <form method="post" action="{{ url_for('agreements.dev_complete') }}">
+        <button class="btn btn-secondary" type="submit">Dev: mark agreement complete</button>
+        <p class="help">Only for local/testing when DocuSign is unavailable.</p>
+      </form>
+      {% endif %}
+    {% else %}
+      <a class="btn" href="{{ url_for('videos.upload') }}">Continue to upload</a>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 class="page-title" style="font-size:1.2rem">DocuSign</h2>
+    <ul class="status-list">
+      <li><span>Configured</span><strong>{{ 'Yes' if docusign_status.configured else 'No' }}</strong></li>
+      <li><span>Environment</span><span>{{ docusign_status.auth_server }}</span></li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

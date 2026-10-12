@@ -1,0 +1,20 @@
+[Unit]
+Description=Video Portal (Flask/Gunicorn) at /videoportal
+After=network.target mariadb.service
+
+[Service]
+User=pakabbas52
+Group=www-data
+WorkingDirectory=/var/www/html/leadpilotai/videoportal
+Environment="PATH=/var/www/html/leadpilotai/videoportal/.venv/bin"
+EnvironmentFile=-/var/www/html/leadpilotai/videoportal/.env
+ExecStart=/var/www/html/leadpilotai/videoportal/.venv/bin/gunicorn \
+    --workers 2 \
+    --bind 127.0.0.1:5055 \
+    --timeout 120 \
+    wsgi:app
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

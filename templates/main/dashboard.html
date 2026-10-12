@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="hero-card mb-1">
+  <h1>Welcome, {{ current_user.full_name.split(' ')[0] }}</h1>
+  <p class="lede">Track uploads, mark videos ready, and download processed farm footage.</p>
+</section>
+
+{% if current_user.is_manager and not agreement_ok %}
+<div class="flash flash-warning mb-1">
+  Sign the blanket upload agreement before you can upload videos.
+  <a href="{{ url_for('agreements.status') }}">Go to agreement</a>
+</div>
+{% endif %}
+
+<div class="grid {% if current_user.is_admin %}grid-4{% elif current_user.is_manager %}grid-4{% else %}grid-2{% endif %} mb-1">
+  {% if current_user.is_admin %}
+    <div class="stat"><div class="label">Awaiting ready</div><div class="value">{{ stats.videos_uploaded }}</div></div>
+    <div class="stat"><div class="label">Ready</div><div class="value">{{ stats.videos_ready }}</div></div>
+    <div class="stat"><div class="label">Managers</div><div class="value">{{ stats.managers }}</div></div>
+    <div class="stat"><div class="label">Farmers</div><div class="value">{{ stats.farmers }}</div></div>
+  {% elif current_user.is_manager %}
+    <div class="stat"><div class="label">My uploads</div><div class="value">{{ stats.my_uploads }}</div></div>
+    <div class="stat"><div class="label">Pending</div><div class="value">{{ stats.pending }}</div></div>
+    <div class="stat"><div class="label">Ready</div><div class="value">{{ stats.ready }}</div></div>
+    <div class="stat"><div class="label">Farmers</div><div class="value">{{ stats.farmers }}</div></div>
+  {% else %}
+    <div class="stat"><div class="label">Ready for you</div><div class="value">{{ stats.ready }}</div></div>
+  {% endif %}
+</div>
+
+<div class="grid grid-2">
+  {% if current_user.role in ['admin', 'manager'] %}
+  <div class="card stack">
+    <h2 class="page-title" style="font-size:1.3rem">Upload</h2>
+    <p class="lede">Collect GoPro clips and tag the farmer who recorded them.</p>
+    <div>
+      <a class="btn" href="{{ url_for('videos.upload') }}">Upload video</a>
+    </div>
+  </div>
+  {% endif %}
+  <div class="card stack">
+    <h2 class="page-title" style="font-size:1.3rem">Download</h2>
+    <p class="lede">Browse ready videos with date, time, manager, and farmer filters.</p>
+    <div>
+      <a class="btn btn-secondary" href="{{ url_for('videos.download_list') }}">Open downloads</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

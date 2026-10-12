@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Users · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="hero-card mb-1">
+  <h1>Users</h1>
+  <p class="lede">
+    {% if current_user.is_admin %}
+      Create managers and farmers, then link farmers under managers.
+    {% else %}
+      Create farmers that report to you.
+    {% endif %}
+  </p>
+</section>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2 class="page-title" style="font-size:1.25rem">Create user</h2>
+    <form method="post" class="form-grid mt-1">
+      <input type="hidden" name="action" value="create">
+      <label>Full name
+        <input type="text" name="full_name" required>
+      </label>
+      <label>Email
+        <input type="email" name="email" required>
+      </label>
+      <label>Password
+        <input type="password" name="password" minlength="8" required>
+        <span class="help">At least 8 characters</span>
+      </label>
+      {% if current_user.is_admin %}
+      <label>Role
+        <select name="role" required>
+          <option value="manager">Manager</option>
+          <option value="farmer">Farmer</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <label>Link farmer to manager (optional)
+        <select name="manager_id">
+          <option value="">—</option>
+          {% for m in managers %}
+            <option value="{{ m.id }}">{{ m.full_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% else %}
+      <input type="hidden" name="role" value="farmer">
+      {% endif %}
+      <button class="btn" type="submit">Create</button>
+    </form>
+  </div>
+
+  {% if current_user.is_admin %}
+  <div class="card">
+    <h2 class="page-title" style="font-size:1.25rem">Link farmer → manager</h2>
+    <form method="post" class="form-grid mt-1">
+      <input type="hidden" name="action" value="link">
+      <label>Manager
+        <select name="manager_id" required>
+          {% for m in managers %}
+            <option value="{{ m.id }}">{{ m.full_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Farmer
+        <select name="farmer_id" required>
+          {% for f in farmers %}
+            <option value="{{ f.id }}">{{ f.full_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn btn-secondary" type="submit">Link</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card mt-2">
+  <h2 class="page-title" style="font-size:1.25rem">Directory</h2>
+  {% if people %}
+  <div class="table-wrap mt-1">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Status</th>
+          {% if current_user.is_admin %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in people %}
+        <tr>
+          <td>{{ u.full_name }}</td>
+          <td>{{ u.email }}</td>
+          <td><span class="badge">{{ u.role }}</span></td>
+          <td>{{ 'Active' if u.is_active else 'Disabled' }}</td>
+          {% if current_user.is_admin %}
+          <td>
+            {% if u.id != current_user.id %}
+            <form method="post" style="display:inline">
+              <input type="hidden" name="action" value="toggle">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <button class="btn btn-sm btn-secondary" type="submit">
+                {{ 'Disable' if u.is_active else 'Enable' }}
+              </button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty mt-1">No users yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

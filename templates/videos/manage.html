@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Manage videos · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="hero-card mb-1">
+  <h1>Manage videos</h1>
+  <p class="lede">Processing is a status flip: mark uploaded clips as ready when they can be downloaded.</p>
+</section>
+
+{% if videos %}
+<div class="card table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>File</th>
+        <th>Farmer</th>
+        <th>Uploader</th>
+        <th>Recorded</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in videos %}
+      <tr>
+        <td>{{ v.original_filename }}</td>
+        <td>{{ v.farmer.full_name }}</td>
+        <td>{{ v.uploader.full_name }}</td>
+        <td>{{ v.recorded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td><span class="badge badge-{{ v.status }}">{{ v.status }}</span></td>
+        <td>
+          {% if v.status != 'ready' %}
+          <form method="post" action="{{ url_for('videos.mark_ready', video_id=v.id) }}">
+            <button class="btn btn-sm" type="submit">Mark ready</button>
+          </form>
+          {% else %}
+          <a class="btn btn-sm btn-secondary" href="{{ url_for('videos.download_file', video_id=v.id) }}">Download</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">No videos yet.</div>
+{% endif %}
+{% endblock %}

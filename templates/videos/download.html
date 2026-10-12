@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Download · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="hero-card mb-1">
+  <h1>Download</h1>
+  <p class="lede">Ready videos only. Times shown as {{ timezone_display }}.</p>
+</section>
+
+<form method="get" class="card mb-1">
+  <div class="filters">
+    <label>From date
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+    </label>
+    <label>To date
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+    </label>
+    <label>From time
+      <input type="time" name="time_from" value="{{ filters.time_from }}">
+    </label>
+    <label>To time
+      <input type="time" name="time_to" value="{{ filters.time_to }}">
+    </label>
+    {% if current_user.is_admin %}
+    <label>Manager
+      <select name="manager_id">
+        <option value="">All</option>
+        {% for m in managers %}
+          <option value="{{ m.id }}" {% if filters.manager_id == m.id|string %}selected{% endif %}>{{ m.full_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    {% if current_user.is_admin or (current_user.is_manager and filters.advanced) %}
+    <label>Farmer {% if current_user.is_manager %}(advanced){% endif %}
+      <select name="farmer_id">
+        <option value="">All</option>
+        {% for f in farmers %}
+          <option value="{{ f.id }}" {% if filters.farmer_id == f.id|string %}selected{% endif %}>{{ f.full_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    {% if current_user.is_manager %}
+    <label class="checkbox-row" style="align-items:center">
+      <input type="checkbox" name="advanced" value="1" {% if filters.advanced %}checked{% endif %} onchange="this.form.submit()">
+      <span>Show farmer filter</span>
+    </label>
+    {% endif %}
+    <div class="actions">
+      <button class="btn" type="submit">Apply filters</button>
+      <a class="btn btn-secondary" href="{{ url_for('videos.download_list') }}">Reset</a>
+    </div>
+  </div>
+</form>
+
+{% if videos %}
+<div class="card table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>File</th>
+        <th>Farmer</th>
+        <th>Uploader</th>
+        <th>Recorded</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in videos %}
+      <tr>
+        <td>{{ v.original_filename }}</td>
+        <td>{{ v.farmer.full_name }}</td>
+        <td>{{ v.uploader.full_name }}</td>
+        <td>{{ v.recorded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td><a class="btn btn-sm" href="{{ url_for('videos.download_file', video_id=v.id) }}">Download</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">No ready videos match these filters.</div>
+{% endif %}
+{% endblock %}

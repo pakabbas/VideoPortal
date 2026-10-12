@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Configurations · {{ site_name }}{% endblock %}
+{% block content %}
+<section class="hero-card mb-1">
+  <h1>Configurations</h1>
+  <p class="lede">Manage portal settings. DocuSign API secrets stay in the server `.env` file.</p>
+</section>
+
+<div class="grid grid-2 mb-1">
+  <div class="card">
+    <h2 class="page-title" style="font-size:1.2rem">DocuSign sandbox</h2>
+    <ul class="status-list">
+      <li><span>Overall</span><strong>{{ 'Configured' if docusign_status.configured else 'Not configured' }}</strong></li>
+      <li><span>Integration key</span><span>{{ 'Yes' if docusign_status.integration_key_set else 'Missing' }}</span></li>
+      <li><span>User ID</span><span>{{ 'Yes' if docusign_status.user_id_set else 'Missing' }}</span></li>
+      <li><span>Account ID</span><span>{{ 'Yes' if docusign_status.account_id_set else 'Missing' }}</span></li>
+      <li><span>RSA private key</span><span>{{ 'Present' if docusign_status.rsa_key_present else 'Missing' }}</span></li>
+      <li><span>Agreement PDF</span><span>{{ 'Present' if docusign_status.agreement_pdf_present else 'Missing' }}</span></li>
+      <li><span>Auth server</span><span>{{ docusign_status.auth_server }}</span></li>
+    </ul>
+    <p class="help mt-1">Free developer account: <a href="https://developers.docusign.com/choose-the-right-developer-plan/" target="_blank" rel="noopener">DocuSign Developer</a>. Demo envelopes are not legally binding.</p>
+  </div>
+  <div class="card">
+    <h2 class="page-title" style="font-size:1.2rem">Tips</h2>
+    <p class="lede">Set `DOCUSIGN_*` values in `.env`, place the RSA key under `secrets/`, and optionally set a template ID below. Without credentials, managers see a clear setup message.</p>
+  </div>
+</div>
+
+<form method="post" class="card form-grid">
+  <label>Site name
+    <input type="text" name="site_name" value="{{ values.site_name }}">
+  </label>
+  <label>Support contact
+    <input type="text" name="support_contact" value="{{ values.support_contact }}" placeholder="ops@example.com">
+  </label>
+  <label>Upload consent terms
+    <textarea name="consent_terms">{{ values.consent_terms }}</textarea>
+  </label>
+  <div class="grid grid-2">
+    <label>Terms version
+      <input type="text" name="terms_version" value="{{ values.terms_version }}">
+      <span class="help">Bump when consent text changes</span>
+    </label>
+    <label>Max upload (MB)
+      <input type="number" name="max_upload_mb" min="1" value="{{ values.max_upload_mb }}">
+    </label>
+  </div>
+  <label>Allowed extensions (comma-separated)
+    <input type="text" name="allowed_extensions" value="{{ values.allowed_extensions }}">
+  </label>
+  <label>Timezone display label
+    <input type="text" name="timezone_display" value="{{ values.timezone_display }}">
+  </label>
+  <div class="grid grid-2">
+    <label>DocuSign template ID (optional)
+      <input type="text" name="docusign_template_id" value="{{ values.docusign_template_id }}">
+    </label>
+    <label>DocuSign return path
+      <input type="text" name="docusign_return_path" value="{{ values.docusign_return_path }}">
+    </label>
+  </div>
+  <label>Enable farmer self-download
+    <select name="enable_farmer_download">
+      <option value="1" {% if values.enable_farmer_download == '1' %}selected{% endif %}>Yes</option>
+      <option value="0" {% if values.enable_farmer_download != '1' %}selected{% endif %}>No</option>
+    </select>
+  </label>
+  <button class="btn" type="submit">Save settings</button>
+</form>
+{% endblock %}
