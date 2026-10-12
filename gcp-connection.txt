@@ -1,6 +1,6 @@
 Video Portal — GCP connection & deployment reference
 ====================================================
-Last verified: 2026-10-12
+Last verified: 2026-10-12 (deployed)
 
 
 1) SSH — GCP 3
@@ -14,112 +14,73 @@ Private key:  ~/Desktop/Important stuff/ssh keys/gcp_3_ed25519
 Connect:
   ssh -i "/Users/abbas/important stuff/ssh keys/gcp_3_ed25519" pakabbas52@34.136.90.173
 
-Non-interactive check:
-  ssh -o BatchMode=yes -o ConnectTimeout=15 \
-      -i "/Users/abbas/important stuff/ssh keys/gcp_3_ed25519" \
-      pakabbas52@34.136.90.173 "hostname && whoami"
+
+2) Subdomain
+------------
+https://leadpilotai.spiralloopstechnologies.com  →  34.136.90.173 (this VM)
+Nginx site: /etc/nginx/sites-available/leadpilotai.spiralloopstechnologies.com
 
 
-2) Subdomain hosted on this VM?
--------------------------------
-YES — leadpilotai.spiralloopstechnologies.com is served by nginx on GCP 3.
-
-DNS:          leadpilotai.spiralloopstechnologies.com → 34.136.90.173
-Nginx site:   /etc/nginx/sites-available/leadpilotai.spiralloopstechnologies.com
-              (enabled via sites-enabled symlink)
-TLS:          Let's Encrypt (cert currently under genai.btkdeals.com name on disk)
-HTTP → HTTPS: redirect on port 80
-
-
-3) Existing apps on that subdomain (DO NOT disturb)
----------------------------------------------------
-Web root parent:
-  /var/www/html/leadpilotai/
-
-| Path on disk                         | Public URL                                      | Status |
-|--------------------------------------|-------------------------------------------------|--------|
-| .../leadpilotai/abdu/                | https://leadpilotai.spiralloopstechnologies.com/abdu/   | LIVE (PHP / Abdu Mart) |
-| .../leadpilotai/genai/               | (no longer on this subdomain)                   | GenAI moved to https://dd.spiralloopstechnologies.com/ ; /genai* returns 404 on leadpilotai |
-
-Root URL (/) only returns a plain-text note that GenAI moved.
-
-Safe rule: only ADD a new folder + a new nginx `location ^~ /videoportal/` block.
-Do not edit abdu location blocks, genai 404 blocks, or dd.spiralloopstechnologies.com.
-
-
-4) This project — target layout
--------------------------------
+3) This app (live)
+------------------
 Public URL:   https://leadpilotai.spiralloopstechnologies.com/videoportal
-              (and /videoportal/ with trailing slash)
+App directory:/var/www/html/leadpilotai/videoportal/
+Systemd:      videoportal.service  (gunicorn 127.0.0.1:5055)
+Uploads:      /var/www/html/leadpilotai/videoportal/uploads/
 
-App directory (to create):
-  /var/www/html/leadpilotai/videoportal/
-
-Ownership pattern (match abdu/genai):
-  pakabbas52:www-data
-  setgid on directory (drwxrwsr-x) so deploys + www-data both work
-
-Nginx approach (same style as /abdu/):
-  - location = /videoportal  → 301 /videoportal/
-  - location ^~ /videoportal/ → alias /var/www/html/leadpilotai/videoportal/
-  - Proxy or app server as needed for Flask (gunicorn/uwsgi systemd unit),
-    OR static+Flask reverse-proxy under that prefix only
-  - Block sensitive paths (.env, venv, etc.) like abdu does for config/
-
-Critical: use `^~ /videoportal/` so it never falls through to `location /`
-and never overlaps `/abdu/` or `/genai/`.
+Do NOT modify /abdu/ or /genai/ nginx blocks.
 
 
-5) Server stack already available
----------------------------------
-nginx          active
-PHP 8.4-FPM    active (used by abdu — leave alone)
-Python 3.13.5  installed
-MariaDB 11.8   active (MySQL-compatible — fits requirements.md)
-sudo           available for nginx reload / systemd
+4) MariaDB
+----------
+Database:  videoportal
+DB user:   videoportal@localhost
+Password:  stored in server .env only
+           (/var/www/html/leadpilotai/videoportal/.env → DATABASE_URL)
+Schema:    schema.sql (also created via flask init-db)
 
 
-6) GitHub
+5) Admin login (seed)
+---------------------
+Email:     admin@videoportal.local
+Password:  ChangeMeAdmin123!
+Change this after first login (Configurations + DB / recreate user).
+
+
+6) DocuSign (sandbox)
+---------------------
+Free developer account: https://developers.docusign.com/choose-the-right-developer-plan/
+Set on server .env:
+  DOCUSIGN_INTEGRATION_KEY
+  DOCUSIGN_USER_ID
+  DOCUSIGN_ACCOUNT_ID
+  DOCUSIGN_RSA_KEY_PATH=/var/www/html/leadpilotai/videoportal/secrets/docusign_private.key
+Auth server: account-d.docusign.com
+Until configured, managers can use “Dev: mark agreement complete” on the Agreement page.
+
+
+7) Redeploy from local
+----------------------
+KEY="/Users/abbas/important stuff/ssh keys/gcp_3_ed25519"
+HOST="pakabbas52@34.136.90.173"
+APP=/var/www/html/leadpilotai/videoportal
+
+rsync -az --delete \
+  --exclude '.venv' --exclude '.env' --exclude 'uploads/*' \
+  --exclude '__pycache__' --exclude '.git' \
+  -e "ssh -i \"$KEY\"" \
+  "/Applications/XAMPP/xamppfiles/htdocs/Video Portal/" \
+  "$HOST:$APP/"
+
+ssh -i "$KEY" "$HOST" "cd $APP && .venv/bin/pip install -r requirements.txt && sudo systemctl restart videoportal"
+
+
+8) GitHub
 ---------
-Remote:       https://github.com/pakabbas/VideoPortal
-Status:       repo EXISTS but is EMPTY (no branches / no commits yet)
-Local folder: /Applications/XAMPP/xamppfiles/htdocs/Video Portal
-              — currently NOT a git repo; only requirements.md (+ this file)
-
-Push plan (when coding starts):
-  cd "/Applications/XAMPP/xamppfiles/htdocs/Video Portal"
-  git init
-  git remote add origin https://github.com/pakabbas/VideoPortal.git
-  # commit → push -u origin main
+https://github.com/pakabbas/VideoPortal  (main)
 
 
-7) Suggested deploy flow (later — not done yet)
------------------------------------------------
-A. Develop locally under Video Portal/
-B. Push to GitHub (pakabbas/VideoPortal)
-C. On GCP 3: create /var/www/html/leadpilotai/videoportal/
-D. rsync or git pull into that folder only
-E. Add nginx location for /videoportal/ only; nginx -t && reload
-F. Create MariaDB database/user for Video Portal (separate from abdu)
-G. Optional: GitHub Actions secrets (GCP_SSH_HOST / USER / PRIVATE_KEY)
-   mirroring genAI deploy — scoped to videoportal path only
-
-
-8) Checklist — do we have everything in place?
-----------------------------------------------
-[x] SSH access to GCP 3 confirmed
-[x] Subdomain confirmed on this VM
-[x] Existing /abdu/ and GenAI routing identified (safe isolation plan)
-[x] Target URL path agreed: /videoportal
-[x] Target disk path agreed: /var/www/html/leadpilotai/videoportal/
-[x] Python + MariaDB present for Flask + MySQL stack
-[x] Empty GitHub repo ready: https://github.com/pakabbas/VideoPortal
-[ ] Local git init + first push (not done — no app code yet)
-[ ] App code (Flask + HTML + schema) — not started
-[ ] videoportal directory on server — not created yet
-[ ] nginx /videoportal/ location — not added yet
-[ ] Dedicated MariaDB database — not created yet
-[ ] Optional CI/CD secrets/workflow — not set up yet
-
-Bottom line: infrastructure and access are ready. Coding + git init +
-server folder + nginx location are the next steps when you say go.
+9) Other apps on same host (leave alone)
+----------------------------------------
+/abdu/   → Abdu Mart PHP (live)
+/genai/  → 404 on this subdomain (GenAI on dd.spiralloopstechnologies.com)
