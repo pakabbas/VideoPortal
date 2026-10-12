@@ -3,6 +3,22 @@ Video Portal — DocuSign (when it appears & how it works)
 Last updated: 2026-10-12
 
 
+0) App URL & login
+------------------
+App URL:   https://leadpilotai.spiralloopstechnologies.com/videoportal
+Login:     https://leadpilotai.spiralloopstechnologies.com/videoportal/login
+
+Seed admin (change after first login):
+  Email:     admin@videoportal.local
+  Password:  ChangeMeAdmin123!
+
+Agreement page (managers only, after login):
+  https://leadpilotai.spiralloopstechnologies.com/videoportal/agreements/
+
+To try DocuSign flow: Admin → Users → create a Manager → log out →
+log in as that manager → open Agreement.
+
+
 1) What DocuSign is for (in this app)
 ------------------------------------
 DocuSign is NOT used on every video upload.
