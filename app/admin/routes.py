@@ -44,6 +44,8 @@ def users():
             password = request.form.get("password") or ""
             role = request.form.get("role") or ""
             manager_id = request.form.get("manager_id")
+            mobile_no = (request.form.get("mobile_no") or "").strip() or None
+            id_card_no = (request.form.get("id_card_no") or "").strip() or None
 
             if current_user.is_manager:
                 role = "farmer"
@@ -64,10 +66,21 @@ def users():
                 flash("Email already exists.", "error")
                 return redirect(url_for("admin.users"))
 
+            # Farmers: optional mobile + ID card. Managers: optional mobile. Admin: ignore extras.
+            if role == "farmer":
+                pass
+            elif role == "manager":
+                id_card_no = None
+            else:
+                mobile_no = None
+                id_card_no = None
+
             user = User(
                 email=email,
                 full_name=full_name,
                 role=role,
+                mobile_no=mobile_no,
+                id_card_no=id_card_no,
                 created_by=current_user.id,
             )
             user.set_password(password)

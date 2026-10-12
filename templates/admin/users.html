@@ -15,7 +15,7 @@
 <div class="grid grid-2">
   <div class="card">
     <h2 class="page-title" style="font-size:1.25rem">Create user</h2>
-    <form method="post" class="form-grid mt-1">
+    <form method="post" class="form-grid mt-1" id="create-user-form">
       <input type="hidden" name="action" value="create">
       <label>Full name
         <input type="text" name="full_name" required>
@@ -29,13 +29,19 @@
       </label>
       {% if current_user.is_admin %}
       <label>Role
-        <select name="role" required>
+        <select name="role" id="create-role" required>
           <option value="manager">Manager</option>
           <option value="farmer">Farmer</option>
           <option value="admin">Admin</option>
         </select>
       </label>
-      <label>Link farmer to manager (optional)
+      <label id="field-mobile" class="optional-field">Mobile no <span class="help">(optional)</span>
+        <input type="text" name="mobile_no" autocomplete="tel">
+      </label>
+      <label id="field-id-card" class="optional-field" hidden>ID card no <span class="help">(optional)</span>
+        <input type="text" name="id_card_no">
+      </label>
+      <label id="field-link-manager">Link farmer to manager (optional)
         <select name="manager_id">
           <option value="">—</option>
           {% for m in managers %}
@@ -45,6 +51,12 @@
       </label>
       {% else %}
       <input type="hidden" name="role" value="farmer">
+      <label>Mobile no <span class="help">(optional)</span>
+        <input type="text" name="mobile_no" autocomplete="tel">
+      </label>
+      <label>ID card no <span class="help">(optional)</span>
+        <input type="text" name="id_card_no">
+      </label>
       {% endif %}
       <button class="btn" type="submit">Create</button>
     </form>
@@ -84,6 +96,8 @@
         <tr>
           <th>Name</th>
           <th>Email</th>
+          <th>Mobile</th>
+          <th>ID card</th>
           <th>Role</th>
           <th>Status</th>
           {% if current_user.is_admin %}<th></th>{% endif %}
@@ -94,6 +108,8 @@
         <tr>
           <td>{{ u.full_name }}</td>
           <td>{{ u.email }}</td>
+          <td>{{ u.mobile_no or '—' }}</td>
+          <td>{{ u.id_card_no if u.role == 'farmer' and u.id_card_no else '—' }}</td>
           <td><span class="badge">{{ u.role }}</span></td>
           <td>{{ 'Active' if u.is_active else 'Disabled' }}</td>
           {% if current_user.is_admin %}
@@ -118,4 +134,31 @@
   <div class="empty mt-1">No users yet.</div>
   {% endif %}
 </div>
+
+{% if current_user.is_admin %}
+<script>
+(function () {
+  var role = document.getElementById('create-role');
+  var mobile = document.getElementById('field-mobile');
+  var idCard = document.getElementById('field-id-card');
+  var linkMgr = document.getElementById('field-link-manager');
+  function sync() {
+    var r = role.value;
+    mobile.hidden = !(r === 'manager' || r === 'farmer');
+    idCard.hidden = r !== 'farmer';
+    linkMgr.hidden = r !== 'farmer';
+    if (r !== 'farmer') {
+      var idInput = idCard.querySelector('input');
+      if (idInput) idInput.value = '';
+    }
+    if (r === 'admin') {
+      var mInput = mobile.querySelector('input');
+      if (mInput) mInput.value = '';
+    }
+  }
+  role.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endif %}
 {% endblock %}

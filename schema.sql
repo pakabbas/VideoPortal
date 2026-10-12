@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
     role ENUM('admin', 'manager', 'farmer') NOT NULL,
+    mobile_no VARCHAR(64) NULL,
+    id_card_no VARCHAR(128) NULL,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     created_by INT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

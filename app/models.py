@@ -14,6 +14,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     full_name = db.Column(db.String(255), nullable=False)
     role = db.Column(db.Enum("admin", "manager", "farmer"), nullable=False)
+    mobile_no = db.Column(db.String(64), nullable=True)
+    id_card_no = db.Column(db.String(128), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
