@@ -1,0 +1,139 @@
+==========================================================================
+QA REVIEW — 2026-10-12 (Grok Bot, end-to-end test of live /videoportal + code review)
+==========================================================================
+Instructions for Cursor AI: work top-down (HIGH first). Each item has Where / Problem /
+Repro / Fix. Do not commit secrets. Live URL used: https://leadpilotai.spiralloopstechnologies.com/videoportal
+
+TEST DATA CREATED ON LIVE SITE (clean up when done):
+  - Manager: qa-manager@videoportal.local / QaManager123!  (name "TEST Manager QA", id 5) + dev-bypass agreement row
+  - Farmer:  qa-farmer@videoportal.local  / QaFarmer123!   (name "TEST Farmer QA", id 6, linked to manager 5)
+  - Farmer:  x@x / 12345678 (name "x") — created accidentally by a role-escalation probe
+            (manager posted role=admin; server silently created a FARMER instead). Delete it.
+  - Video id 2: "evil.php.mp4" (16 bytes of PHP text, not a real video) — upload-validation probe, status uploaded
+  - Video id 3: test_clip_4s.mp4 (real), marked ready
+  Video files are in /var/www/html/leadpilotai/videoportal/uploads/.
+
+WHAT WORKED: login for all 3 roles; admin creates manager/farmer + link; dev agreement bypass;
+upload blocked without consent; .html extension rejected; farmer gets 403 on admin/upload/manage;
+manager gets 403 on configurations and on video 1 (other uploader); download + date/time/farmer/
+manager filters returned correct results; Range requests (206) on preview; no server errors in journal.
+
+--------------------------------------------------------------------------
+HIGH
+--------------------------------------------------------------------------
+H1. No CSRF protection anywhere
+  Where: all POST forms (templates/*), app/__init__.py; no Flask-WTF/CSRFProtect.
+  Problem: any external site can make a logged-in admin create users/admins, change settings
+    (e.g. enable_farmer_download, allowed_extensions), toggle users; or make a manager mark videos ready.
+    SameSite=Lax helps only partially.
+  Repro: grep -ri csrf app templates -> nothing. POSTs succeed with no token.
+  Fix: add Flask-WTF CSRFProtect(app); put {{ csrf_token() }} hidden input in every <form method=post>.
+    Make /logout POST-only.
+
+H2. Agreement can be self-completed without signing (callback trusts query string)
+  Where: app/agreements/routes.py callback()
+  Problem: if a pending agreement row exists and the DocuSign API poll fails/doesn't say completed,
+    GET /agreements/callback?event=signing_complete marks it completed ("optimistic complete").
+    A manager can just type that URL. Spec says agreement must be signed before upload.
+  Repro: as manager with a pending envelope, open /videoportal/agreements/callback?event=signing_complete
+    -> redirected to /videos/upload and status=completed (verified redirect live).
+  Fix: only mark completed when get_envelope_status() returns "completed" (or via DocuSign Connect webhook
+    with HMAC verification). Never trust the `event` param alone; on API failure leave it pending.
+
+H3. "Dev: mark agreement complete" bypass is live in production
+  Where: app/agreements/routes.py dev_complete(); templates/agreements/status.html
+  Problem: enabled whenever DocuSign isn't configured — on the public server any manager self-signs.
+  Fix: gate behind an explicit env flag (e.g. ALLOW_DEV_AGREEMENT_BYPASS=1, default off) and hide the button
+    unless enabled; record envelope_id="dev-bypass" visibly in admin UI.
+
+H4. Credentials committed to git
+  Where: docusign.txt (line ~13) and gcp-connection.txt (line ~46) contain the admin password in plain text;
+    gcp-connection.txt also documents the SSH key path, server IP and user. app/config.py hardcodes default
+    ADMIN_PASSWORD and SECRET_KEY "dev-only-change-me".
+  Fix: remove passwords from tracked files (move these notes outside the repo or to .gitignore), rotate the
+    live admin password (manual task for Abbas), purge from git history if repo is/was shared.
+    In config.py: refuse to start if FLASK_SECRET_KEY unset or default when not in debug; don't default ADMIN_PASSWORD.
+
+H5. Open redirect after login
+  Where: app/auth/routes.py login(), `next_url = request.args.get("next")`
+  Repro: POST /videoportal/login?next=https://evil.example with valid creds -> Location: https://evil.example (verified).
+  Fix: accept `next` only if it is a relative path (urlparse netloc == "" and starts with "/"), else dashboard.
+
+H6. Upload validation is extension-only; no real "processing" step
+  Where: app/videos/routes.py upload(), mark_ready()
+  Problem: a 16-byte PHP text file named evil.php.mp4 was accepted as a video (video id 2). Files are served
+    back with the claimed type. Spec requires videos be "modified (processed) before download", but the app
+    only has a manual "Mark ready" button that serves the original untouched file.
+  Fix: validate with ffprobe (must have a video stream), reject otherwise; implement a processing job
+    (ffmpeg transcode/normalize, e.g. H.264 MP4, strip metadata) writing a separate processed file;
+    store processed_path + status uploaded->processing->ready/failed; serve processed file only.
+
+--------------------------------------------------------------------------
+MEDIUM
+--------------------------------------------------------------------------
+M1. Session cookie not Secure; no security headers
+  Where: app/config.py; nginx
+  Repro: Set-Cookie on login: "session=...; HttpOnly; Path=/videoportal; SameSite=Lax" (no Secure).
+    No HSTS, X-Frame-Options, X-Content-Type-Options, CSP.
+  Fix: SESSION_COOKIE_SECURE=True, REMEMBER_COOKIE_SECURE=True (env-driven for local dev);
+    add headers via after_request (nosniff, X-Frame-Options DENY, basic CSP).
+
+M2. Manager's invalid role request silently creates a farmer
+  Where: app/admin/routes.py users() — `if current_user.is_manager: role = "farmer"` runs before checks,
+    so the "Managers can only create farmers" error is dead code.
+  Repro: as manager POST action=create role=admin -> a farmer account is created (that's how x@x got created).
+  Fix: validate the submitted role first; reject (flash error) if manager sends anything but farmer.
+
+M3. No login rate limiting / lockout
+  Where: app/auth/routes.py
+  Repro: repeated wrong passwords always return 200, no delay.
+
+M4. Admin upload bypasses agreement; consent not tied to the person
+  Where: videos/upload(), manager_has_signed_agreement
+  Problem: admins can upload with no agreement; consent row doesn't store the consent text shown, IP or
+    user agent. For audit purposes, store terms text hash/version, accepted_at (server UTC), IP, UA.
+  Fix: decide whether admins may upload (spec says managers upload); extend upload_consents.
+
+M5. No MAX_CONTENT_LENGTH; size check after full upload
+  Where: app/config.py, upload()
+  Problem: whole file is received/spooled before size check; nginx allows 600m while setting says 500.
+  Fix: set app.config["MAX_CONTENT_LENGTH"] from max_upload_mb; handle 413 with a friendly page.
+
+M6. Manager cannot add/link existing farmers or manage their farmers; admin "users create more users"
+  Where: admin/users
+  Problem: spec: "users are responsible for creating additional users". Managers can only create new
+    farmers; no deactivate/reset-password for their own farmers; admin cannot unlink or edit users,
+    no password reset at all.
+  Fix: add edit/reset-password/unlink for admin; deactivate own farmers for managers.
+
+M7. Settings accept any value
+  Where: admin/configurations
+  Problem: allowed_extensions can be set to html/svg/php; max_upload_mb non-numeric; no validation.
+  Fix: whitelist extensions to known video types; validate ints; validate enable_farmer_download in {0,1}.
+
+M8. Model/schema mismatch
+  Fix: Flask-Limiter (e.g. 5/min per IP+email), log failed attempts.
+  Where: app/models.py vs schema.sql
+  Problem: schema.sql has UNIQUE(manager_id,farmer_id), FK ON DELETE rules, INT UNSIGNED; models.py
+    (used by `flask init-db` create_all) has none of these -> different DB depending on setup path.
+    Datetimes stored as naive utcnow but timezone_display setting is never applied in templates.
+  Fix: add UniqueConstraint/ondelete to models (or use Alembic migrations as single source of truth);
+    convert times for display; consider a unique "one completed agreement per manager" rule.
+
+--------------------------------------------------------------------------
+LOW
+--------------------------------------------------------------------------
+L1. Filters done in Python after loading all rows (time, manager, farmer)
+  Where: videos/download_list(). Move to SQL (func.time(Video.recorded_at) between ...), add pagination.
+L2. Invalid time filter silently ignored (time_from=zz returns all) — flash an error like date filters do.
+L3. Farmer filter "advanced" flag is meaningless (managers/admins always get it); farmers get no filters. Clarify per spec.
+L4. Preview endpoint lacks X-Content-Type-Options: nosniff; set mimetype from validated type.
+L5. GET /logout (CSRF logout) — make POST.
+L6. Video.query.get_or_404 is legacy SQLAlchemy API; use db.get_or_404.
+L7. No delete/archive for videos and no audit log of downloads (who downloaded what, when) — useful for consent/compliance.
+L8. datetime.utcnow deprecated (Python 3.12); use datetime.now(timezone.utc).
+L9. Manager signup: spec says manager signs "during sign-up"; currently admin creates the manager and the
+    manager signs later on first login. Consider forcing the agreement page right after first login (redirect
+    all manager pages until signed).
+L10. No automated tests. Add pytest covering role access matrix, IDOR on /videos/<id>/file and /preview,
+    consent required, agreement required.
