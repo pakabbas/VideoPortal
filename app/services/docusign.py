@@ -52,6 +52,7 @@ def _api_client():
     cfg = current_app.config
     rsa_path = Path(cfg["DOCUSIGN_RSA_KEY_PATH"])
     private_key = rsa_path.read_bytes()
+    account_id = cfg["DOCUSIGN_ACCOUNT_ID"]
 
     api_client = ApiClient()
     api_client.set_base_path(cfg["DOCUSIGN_BASE_PATH"])
@@ -66,10 +67,23 @@ def _api_client():
             expires_in=3600,
             scopes=["signature", "impersonation"],
         )
+        access_token = token.access_token
+        # Resolve account base URI so REST calls hit demo.docusign.net/restapi
+        # (not the OAuth host). Missing this causes AUTHORIZATION_INVALID_TOKEN.
+        user_info = api_client.get_user_info(access_token)
+        account = next(
+            (a for a in user_info.accounts if a.account_id == account_id),
+            user_info.accounts[0] if user_info.accounts else None,
+        )
+        if account is None or not account.base_uri:
+            raise DocuSignError("DocuSign account base URI not found for this user")
+        api_client.host = f"{account.base_uri.rstrip('/')}/restapi"
+        api_client.set_default_header("Authorization", f"Bearer {access_token}")
+    except DocuSignError:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise DocuSignError(f"DocuSign JWT auth failed: {exc}") from exc
 
-    api_client.set_default_header("Authorization", f"Bearer {token.access_token}")
     return api_client
 
 

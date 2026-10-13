@@ -54,7 +54,12 @@ def start():
         )
         return redirect(url_for("agreements.status"))
 
-    return_url = url_for("agreements.callback", _external=True)
+    # Prefer HTTPS return URL (DocuSign + our nginx TLS site)
+    return_url = url_for(
+        "agreements.callback",
+        _external=True,
+        _scheme="https",
+    )
     template_id = (get_setting("docusign_template_id") or "").strip() or None
 
     try:
