@@ -167,3 +167,46 @@ def dev_complete():
     db.session.commit()
     flash("Dev agreement marked complete (DocuSign not configured).", "success")
     return redirect(url_for("videos.upload"))
+
+
+@bp.route("/reset", methods=["POST"])
+@login_required
+def reset():
+    """Clear completed agreement so the manager can sign again (demos / re-sign)."""
+    if current_user.is_admin:
+        try:
+            manager_id = int(request.form.get("manager_id") or current_user.id)
+        except (TypeError, ValueError):
+            flash("Invalid manager.", "error")
+            return redirect(url_for("agreements.status"))
+        from app.models import User
+
+        manager = User.query.filter_by(id=manager_id, role="manager").first()
+        if not manager:
+            flash("Manager not found.", "error")
+            return redirect(url_for("agreements.status"))
+    elif current_user.is_manager:
+        manager_id = current_user.id
+    else:
+        flash("Not allowed.", "error")
+        return redirect(url_for("main.dashboard"))
+
+    rows = ManagerAgreement.query.filter_by(manager_id=manager_id).all()
+    if not rows:
+        flash("No agreement to reset.", "warning")
+        return redirect(url_for("agreements.status"))
+
+    for row in rows:
+        # Keep history visible as declined/revoked locally; upload gate only checks completed
+        if row.status == "completed":
+            row.status = "declined"
+            row.signed_at = None
+        elif row.status == "pending":
+            row.status = "declined"
+
+    db.session.commit()
+    flash(
+        "Agreement reset. You can sign with DocuSign again before uploading.",
+        "success",
+    )
+    return redirect(url_for("agreements.status"))

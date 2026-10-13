@@ -34,7 +34,13 @@
       </form>
       {% endif %}
     {% else %}
-      <a class="btn" href="{{ url_for('videos.upload') }}">Continue to upload</a>
+      <div class="row-actions">
+        <a class="btn" href="{{ url_for('videos.upload') }}">Continue to upload</a>
+        <form method="post" action="{{ url_for('agreements.reset') }}" onsubmit="return confirm('Reset this agreement? You will need to sign with DocuSign again before uploading.');">
+          <button class="btn btn-secondary" type="submit">Reset agreement</button>
+        </form>
+      </div>
+      <p class="help">Reset clears the local completed status so you can demo or re-sign. It does not void the old DocuSign envelope in DocuSign’s sandbox.</p>
     {% endif %}
   </div>
 
