@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from functools import wraps
 from pathlib import Path
 
@@ -158,6 +158,7 @@ def upload():
         terms_version=terms_version,
         max_mb=get_setting("max_upload_mb", "500"),
         extensions=get_setting("allowed_extensions"),
+        today=date.today().isoformat(),
     )
 
 
