@@ -217,6 +217,13 @@ def manage():
     return render_template("videos/manage.html", videos=videos)
 
 
+def _video_has_completed_docusign(video_id: int) -> bool:
+    return (
+        VideoAgreement.query.filter_by(video_id=video_id, status="completed").first()
+        is not None
+    )
+
+
 @bp.route("/<int:video_id>/ready", methods=["POST"])
 @login_required
 @manager_or_admin
@@ -224,7 +231,7 @@ def mark_ready(video_id: int):
     video = Video.query.get_or_404(video_id)
     if current_user.is_manager and video.uploader_id != current_user.id:
         abort(403)
-    if video.status == "pending_signature":
+    if video.status == "pending_signature" or not _video_has_completed_docusign(video.id):
         flash("Finish the DocuSign video agreement before marking ready.", "warning")
         return redirect(url_for("videos.manage"))
     if video.status == "uploaded":
@@ -239,7 +246,7 @@ def mark_ready(video_id: int):
 @login_required
 @manager_or_admin
 def agreement_callback():
-    """Fixed return URL after per-video DocuSign (video_id query param)."""
+    """Return URL after per-video DocuSign. Completion requires live DocuSign status."""
     try:
         video_id = int(request.args.get("video_id") or 0)
     except (TypeError, ValueError):
@@ -257,30 +264,34 @@ def agreement_callback():
         .order_by(VideoAgreement.created_at.desc())
         .first()
     )
-    if not agreement:
+    if not agreement or not agreement.docusign_envelope_id:
         flash("No video agreement found.", "warning")
         return redirect(url_for("videos.manage"))
 
+    # Already verified — do not re-open based on query params alone
+    if agreement.status == "completed" and video.status in ("uploaded", "ready"):
+        flash("Video agreement already completed.", "success")
+        return redirect(url_for("videos.manage"))
+
+    if not docusign_service.is_configured():
+        flash("DocuSign is not configured; cannot verify signature.", "error")
+        return redirect(url_for("videos.manage"))
+
     event = (request.args.get("event") or "").lower()
-    completed = False
 
-    if agreement.docusign_envelope_id and docusign_service.is_configured():
-        try:
-            status = docusign_service.get_envelope_status(agreement.docusign_envelope_id)
-            if status in ("completed", "signed"):
-                completed = True
-            elif status in ("declined", "voided"):
-                agreement.status = "declined"
-                db.session.commit()
-                flash("Video agreement was declined. Re-sign from Manage to finish.", "error")
-                return redirect(url_for("videos.manage"))
-        except docusign_service.DocuSignError:
-            pass
+    try:
+        status = docusign_service.get_envelope_status(agreement.docusign_envelope_id)
+    except docusign_service.DocuSignError as exc:
+        flash(
+            f"Could not verify DocuSign status. Signature was not accepted. ({exc})",
+            "error",
+        )
+        return redirect(url_for("videos.manage"))
 
-    if not completed and event in ("signing_complete", "viewing_complete"):
-        completed = True
+    status = (status or "").lower()
 
-    if completed:
+    # Never trust ?event= alone — only DocuSign API status may complete the upload
+    if status in ("completed", "signed"):
         agreement.status = "completed"
         agreement.signed_at = datetime.utcnow()
         if video.status == "pending_signature":
@@ -289,11 +300,17 @@ def agreement_callback():
         flash("Video agreement signed. Upload is complete — mark ready when processed.", "success")
         return redirect(url_for("videos.manage"))
 
-    if event in ("decline", "cancel"):
+    if status in ("declined", "voided") or event in ("decline", "cancel"):
         agreement.status = "declined"
         db.session.commit()
-        flash("Signing cancelled. Re-sign from Manage to finish this upload.", "warning")
+        flash("Signing was cancelled or declined. Re-sign from Manage to finish.", "warning")
+        return redirect(url_for("videos.manage"))
 
+    flash(
+        "DocuSign has not recorded a completed signature yet. "
+        "If you finished signing, wait a moment and use Sign DocuSign again from Manage.",
+        "warning",
+    )
     return redirect(url_for("videos.manage"))
 
 
@@ -490,6 +507,8 @@ def preview(video_id: int):
 def download_file(video_id: int):
     video = Video.query.get_or_404(video_id)
     if not _can_access_video(video, require_ready=True):
+        abort(403)
+    if not _video_has_completed_docusign(video.id):
         abort(403)
 
     path = Path(video.stored_path)

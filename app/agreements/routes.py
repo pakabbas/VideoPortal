@@ -89,7 +89,7 @@ def start():
 @bp.route("/callback")
 @login_required
 def callback():
-    """Return URL from DocuSign embedded signing."""
+    """Return URL from DocuSign embedded signing. Completion requires live API status."""
     if not current_user.is_manager:
         return redirect(url_for("main.dashboard"))
 
@@ -100,41 +100,44 @@ def callback():
         .first()
     )
 
-    if not agreement:
+    if not agreement or not agreement.docusign_envelope_id:
         flash("No agreement in progress.", "warning")
         return redirect(url_for("agreements.status"))
 
-    # Prefer live status from DocuSign when possible
-    if agreement.docusign_envelope_id and docusign_service.is_configured():
-        try:
-            status = docusign_service.get_envelope_status(agreement.docusign_envelope_id)
-            if status in ("completed", "signed"):
-                agreement.status = "completed"
-                agreement.signed_at = datetime.utcnow()
-                db.session.commit()
-                flash("Agreement signed. You can upload videos now.", "success")
-                return redirect(url_for("videos.upload"))
-            if status in ("declined", "voided"):
-                agreement.status = "declined"
-                db.session.commit()
-                flash("Agreement was declined.", "error")
-                return redirect(url_for("agreements.status"))
-        except docusign_service.DocuSignError:
-            pass
+    if agreement.status == "completed":
+        flash("Agreement already completed.", "success")
+        return redirect(url_for("videos.upload"))
 
-    if event in ("signing_complete", "viewing_complete"):
-        # Optimistic complete when DocuSign returns success event but API poll failed
+    if not docusign_service.is_configured():
+        flash("DocuSign is not configured; cannot verify signature.", "error")
+        return redirect(url_for("agreements.status"))
+
+    try:
+        status = docusign_service.get_envelope_status(agreement.docusign_envelope_id)
+    except docusign_service.DocuSignError as exc:
+        flash(f"Could not verify DocuSign status. ({exc})", "error")
+        return redirect(url_for("agreements.status"))
+
+    status = (status or "").lower()
+
+    # Never trust ?event= alone — only DocuSign API status may complete signup
+    if status in ("completed", "signed"):
         agreement.status = "completed"
         agreement.signed_at = datetime.utcnow()
         db.session.commit()
         flash("Agreement signed. You can upload videos now.", "success")
         return redirect(url_for("videos.upload"))
 
-    if event in ("decline", "cancel"):
+    if status in ("declined", "voided") or event in ("decline", "cancel"):
         agreement.status = "declined"
         db.session.commit()
-        flash("Signing was cancelled or declined.", "warning")
+        flash("Agreement was cancelled or declined.", "warning")
+        return redirect(url_for("agreements.status"))
 
+    flash(
+        "DocuSign has not recorded a completed signature yet. Try signing again.",
+        "warning",
+    )
     return redirect(url_for("agreements.status"))
 
 
