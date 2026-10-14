@@ -87,14 +87,18 @@ def _api_client():
     return api_client
 
 
-def create_manager_agreement_envelope(
+def create_signing_envelope(
     *,
-    manager_email: str,
-    manager_name: str,
+    signer_email: str,
+    signer_name: str,
     return_url: str,
+    email_subject: str,
+    document_name: str,
+    pdf_path: Optional[Path] = None,
     template_id: Optional[str] = None,
+    client_user_id: Optional[str] = None,
 ) -> dict[str, str]:
-    """Create an envelope and return envelope_id + recipient signing URL."""
+    """Create an embedded-signing envelope; return envelope_id + signing_url."""
     from docusign_esign import (
         Document,
         EnvelopeDefinition,
@@ -109,37 +113,38 @@ def create_manager_agreement_envelope(
     api_client = _api_client()
     account_id = current_app.config["DOCUSIGN_ACCOUNT_ID"]
     envelopes_api = EnvelopesApi(api_client)
+    embedded_id = client_user_id or str(signer_email)
 
     signer = Signer(
-        email=manager_email,
-        name=manager_name,
+        email=signer_email,
+        name=signer_name,
         recipient_id="1",
         routing_order="1",
-        client_user_id=str(manager_email),
+        client_user_id=embedded_id,
     )
 
     if template_id:
         envelope = EnvelopeDefinition(
-            email_subject="Video Portal — Manager Upload Agreement",
+            email_subject=email_subject,
             status="sent",
             template_id=template_id,
             template_roles=[
                 {
-                    "email": manager_email,
-                    "name": manager_name,
+                    "email": signer_email,
+                    "name": signer_name,
                     "roleName": "Manager",
-                    "clientUserId": str(manager_email),
+                    "clientUserId": embedded_id,
                 }
             ],
         )
     else:
-        pdf_path = Path(current_app.config["DOCUSIGN_AGREEMENT_PDF"])
-        if not pdf_path.is_file():
-            raise DocuSignError(f"Agreement PDF missing: {pdf_path}")
+        path = Path(pdf_path or current_app.config["DOCUSIGN_AGREEMENT_PDF"])
+        if not path.is_file():
+            raise DocuSignError(f"Agreement PDF missing: {path}")
 
         document = Document(
-            document_base64=base64.b64encode(pdf_path.read_bytes()).decode("ascii"),
-            name="Manager Upload Agreement",
+            document_base64=base64.b64encode(path.read_bytes()).decode("ascii"),
+            name=document_name,
             file_extension="pdf",
             document_id="1",
         )
@@ -151,7 +156,7 @@ def create_manager_agreement_envelope(
         )
         signer.tabs = Tabs(sign_here_tabs=[sign_here])
         envelope = EnvelopeDefinition(
-            email_subject="Video Portal — Manager Upload Agreement",
+            email_subject=email_subject,
             documents=[document],
             recipients=Recipients(signers=[signer]),
             status="sent",
@@ -163,11 +168,11 @@ def create_manager_agreement_envelope(
 
         view_request = RecipientViewRequest(
             authentication_method="none",
-            client_user_id=str(manager_email),
+            client_user_id=embedded_id,
             recipient_id="1",
             return_url=return_url,
-            user_name=manager_name,
-            email=manager_email,
+            user_name=signer_name,
+            email=signer_email,
         )
         view = envelopes_api.create_recipient_view(
             account_id, envelope_id, recipient_view_request=view_request
@@ -176,6 +181,52 @@ def create_manager_agreement_envelope(
         raise DocuSignError(f"DocuSign envelope creation failed: {exc}") from exc
 
     return {"envelope_id": envelope_id, "signing_url": view.url}
+
+
+def create_manager_agreement_envelope(
+    *,
+    manager_email: str,
+    manager_name: str,
+    return_url: str,
+    template_id: Optional[str] = None,
+) -> dict[str, str]:
+    """Signup / blanket manager agreement."""
+    return create_signing_envelope(
+        signer_email=manager_email,
+        signer_name=manager_name,
+        return_url=return_url,
+        email_subject="Video Portal — Manager Signup Agreement",
+        document_name="Manager Signup Agreement",
+        template_id=template_id,
+        client_user_id=f"signup:{manager_email}",
+    )
+
+
+def create_video_agreement_envelope(
+    *,
+    signer_email: str,
+    signer_name: str,
+    return_url: str,
+    video_id: int,
+    video_filename: str,
+    template_id: Optional[str] = None,
+) -> dict[str, str]:
+    """Per-video upload agreement."""
+    from app.config import Config
+
+    pdf = Path(current_app.root_path).parent / "static" / "docs" / "video_upload_agreement.pdf"
+    if not pdf.is_file():
+        pdf = Path(Config.DOCUSIGN_AGREEMENT_PDF)
+    return create_signing_envelope(
+        signer_email=signer_email,
+        signer_name=signer_name,
+        return_url=return_url,
+        email_subject=f"Video Portal — Upload agreement (video #{video_id})",
+        document_name=f"Video Upload Agreement — {video_filename}",
+        pdf_path=pdf,
+        template_id=template_id,
+        client_user_id=f"video:{video_id}:{signer_email}",
+    )
 
 
 def get_envelope_status(envelope_id: str) -> str:

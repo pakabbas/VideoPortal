@@ -67,7 +67,7 @@ def start():
             manager_email=current_user.email,
             manager_name=current_user.full_name,
             return_url=return_url,
-            template_id=template_id,
+            template_id=template_id or None,
         )
     except docusign_service.DocuSignNotConfigured:
         flash("DocuSign is not configured.", "error")

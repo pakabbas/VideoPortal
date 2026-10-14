@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS videos (
     stored_path VARCHAR(1024) NOT NULL,
     farmer_id INT UNSIGNED NOT NULL,
     uploader_id INT UNSIGNED NOT NULL,
-    status ENUM('uploaded', 'ready') NOT NULL DEFAULT 'uploaded',
+    status ENUM('pending_signature', 'uploaded', 'ready') NOT NULL DEFAULT 'pending_signature',
     recorded_at DATETIME NOT NULL,
     uploaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ready_at DATETIME NULL,
@@ -42,6 +42,20 @@ CREATE TABLE IF NOT EXISTS videos (
     INDEX idx_videos_recorded (recorded_at),
     INDEX idx_videos_farmer (farmer_id),
     INDEX idx_videos_uploader (uploader_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS video_agreements (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    video_id INT UNSIGNED NOT NULL,
+    signer_id INT UNSIGNED NOT NULL,
+    docusign_envelope_id VARCHAR(128) NULL,
+    status ENUM('pending', 'completed', 'declined') NOT NULL DEFAULT 'pending',
+    signed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_va_video FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+    CONSTRAINT fk_va_signer FOREIGN KEY (signer_id) REFERENCES users(id) ON DELETE RESTRICT,
+    INDEX idx_va_video (video_id),
+    INDEX idx_va_status (status)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS upload_consents (

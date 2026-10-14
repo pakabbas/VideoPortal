@@ -3,7 +3,7 @@
 {% block content %}
 <section class="hero-card mb-1">
   <h1>Manage videos</h1>
-  <p class="lede">Preview clips, then mark them ready when they can be downloaded.</p>
+  <p class="lede">Complete DocuSign for pending uploads, preview clips, then mark them ready for download.</p>
 </section>
 
 {% if videos %}
@@ -26,7 +26,7 @@
         <td>{{ v.farmer.full_name }}</td>
         <td>{{ v.uploader.full_name }}</td>
         <td>{{ v.recorded_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td><span class="badge badge-{{ v.status }}">{{ v.status }}</span></td>
+        <td><span class="badge badge-{{ v.status }}">{{ v.status.replace('_', ' ') }}</span></td>
         <td>
           <div class="row-actions">
             <button
@@ -36,11 +36,15 @@
               data-preview-title="{{ v.original_filename }}"
               onclick="openVideoPreview(this)"
             >Preview</button>
-            {% if v.status != 'ready' %}
+            {% if v.status == 'pending_signature' and v.uploader_id == current_user.id %}
+            <form method="post" action="{{ url_for('videos.resign', video_id=v.id) }}">
+              <button class="btn btn-sm" type="submit">Sign DocuSign</button>
+            </form>
+            {% elif v.status == 'uploaded' %}
             <form method="post" action="{{ url_for('videos.mark_ready', video_id=v.id) }}">
               <button class="btn btn-sm" type="submit">Mark ready</button>
             </form>
-            {% else %}
+            {% elif v.status == 'ready' %}
             <a class="btn btn-sm btn-secondary" href="{{ url_for('videos.download_file', video_id=v.id) }}">Download</a>
             {% endif %}
           </div>

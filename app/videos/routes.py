@@ -18,7 +18,15 @@ from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import ManagerAgreement, ManagerFarmer, UploadConsent, User, Video
+from app.models import (
+    ManagerAgreement,
+    ManagerFarmer,
+    UploadConsent,
+    User,
+    Video,
+    VideoAgreement,
+)
+from app.services import docusign as docusign_service
 from app.services.settings import (
     allowed_extensions_set,
     get_setting,
@@ -124,6 +132,14 @@ def upload():
             )
             return redirect(url_for("videos.upload"))
 
+        if not docusign_service.is_configured():
+            flash(
+                "DocuSign is required for each video upload but is not configured. "
+                "Contact an admin.",
+                "error",
+            )
+            return redirect(url_for("videos.upload"))
+
         upload_root = Path(current_app.config["UPLOAD_FOLDER"])
         upload_root.mkdir(parents=True, exist_ok=True)
         stored_name = f"{datetime.utcnow().strftime('%Y%m%d')}_{uuid.uuid4().hex}.{ext}"
@@ -135,11 +151,12 @@ def upload():
             stored_path=str(dest),
             farmer_id=farmer_id,
             uploader_id=current_user.id,
-            status="uploaded",
+            status="pending_signature",
             recorded_at=recorded_at,
         )
         db.session.add(video)
         db.session.flush()
+        # Consent row is stored now; video stays pending until DocuSign completes
         db.session.add(
             UploadConsent(
                 video_id=video.id,
@@ -148,8 +165,34 @@ def upload():
             )
         )
         db.session.commit()
-        flash("Video uploaded. Mark it ready when processing is complete.", "success")
-        return redirect(url_for("videos.manage"))
+
+        return_url = url_for(
+            "videos.agreement_callback",
+            _external=True,
+            _scheme="https",
+            video_id=video.id,
+        )
+        try:
+            result = docusign_service.create_video_agreement_envelope(
+                signer_email=current_user.email,
+                signer_name=current_user.full_name,
+                return_url=return_url,
+                video_id=video.id,
+                video_filename=filename,
+            )
+        except docusign_service.DocuSignError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("videos.manage"))
+
+        agreement = VideoAgreement(
+            video_id=video.id,
+            signer_id=current_user.id,
+            docusign_envelope_id=result["envelope_id"],
+            status="pending",
+        )
+        db.session.add(agreement)
+        db.session.commit()
+        return redirect(result["signing_url"])
 
     return render_template(
         "videos/upload.html",
@@ -159,6 +202,7 @@ def upload():
         max_mb=get_setting("max_upload_mb", "500"),
         extensions=get_setting("allowed_extensions"),
         today=date.today().isoformat(),
+        docusign_ready=docusign_service.is_configured(),
     )
 
 
@@ -180,12 +224,122 @@ def mark_ready(video_id: int):
     video = Video.query.get_or_404(video_id)
     if current_user.is_manager and video.uploader_id != current_user.id:
         abort(403)
-    if video.status != "ready":
+    if video.status == "pending_signature":
+        flash("Finish the DocuSign video agreement before marking ready.", "warning")
+        return redirect(url_for("videos.manage"))
+    if video.status == "uploaded":
         video.status = "ready"
         video.ready_at = datetime.utcnow()
         db.session.commit()
         flash("Video marked ready for download.", "success")
     return redirect(request.referrer or url_for("videos.manage"))
+
+
+@bp.route("/agreement-callback")
+@login_required
+@manager_or_admin
+def agreement_callback():
+    """Fixed return URL after per-video DocuSign (video_id query param)."""
+    try:
+        video_id = int(request.args.get("video_id") or 0)
+    except (TypeError, ValueError):
+        video_id = 0
+    if not video_id:
+        flash("Missing video for agreement callback.", "error")
+        return redirect(url_for("videos.manage"))
+
+    video = Video.query.get_or_404(video_id)
+    if video.uploader_id != current_user.id:
+        abort(403)
+
+    agreement = (
+        VideoAgreement.query.filter_by(video_id=video.id)
+        .order_by(VideoAgreement.created_at.desc())
+        .first()
+    )
+    if not agreement:
+        flash("No video agreement found.", "warning")
+        return redirect(url_for("videos.manage"))
+
+    event = (request.args.get("event") or "").lower()
+    completed = False
+
+    if agreement.docusign_envelope_id and docusign_service.is_configured():
+        try:
+            status = docusign_service.get_envelope_status(agreement.docusign_envelope_id)
+            if status in ("completed", "signed"):
+                completed = True
+            elif status in ("declined", "voided"):
+                agreement.status = "declined"
+                db.session.commit()
+                flash("Video agreement was declined. Re-sign from Manage to finish.", "error")
+                return redirect(url_for("videos.manage"))
+        except docusign_service.DocuSignError:
+            pass
+
+    if not completed and event in ("signing_complete", "viewing_complete"):
+        completed = True
+
+    if completed:
+        agreement.status = "completed"
+        agreement.signed_at = datetime.utcnow()
+        if video.status == "pending_signature":
+            video.status = "uploaded"
+        db.session.commit()
+        flash("Video agreement signed. Upload is complete — mark ready when processed.", "success")
+        return redirect(url_for("videos.manage"))
+
+    if event in ("decline", "cancel"):
+        agreement.status = "declined"
+        db.session.commit()
+        flash("Signing cancelled. Re-sign from Manage to finish this upload.", "warning")
+
+    return redirect(url_for("videos.manage"))
+
+
+@bp.route("/<int:video_id>/resign", methods=["POST"])
+@login_required
+@manager_or_admin
+def resign(video_id: int):
+    """Start or restart DocuSign for a pending_signature video."""
+    video = Video.query.get_or_404(video_id)
+    if video.uploader_id != current_user.id:
+        abort(403)
+    if video.status != "pending_signature":
+        flash("This video does not need a signature.", "warning")
+        return redirect(url_for("videos.manage"))
+    if not docusign_service.is_configured():
+        flash("DocuSign is not configured.", "error")
+        return redirect(url_for("videos.manage"))
+
+    return_url = url_for(
+        "videos.agreement_callback",
+        _external=True,
+        _scheme="https",
+        video_id=video.id,
+    )
+    try:
+        result = docusign_service.create_video_agreement_envelope(
+            signer_email=current_user.email,
+            signer_name=current_user.full_name,
+            return_url=return_url,
+            video_id=video.id,
+            video_filename=video.original_filename,
+        )
+    except docusign_service.DocuSignError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("videos.manage"))
+
+    db.session.add(
+        VideoAgreement(
+            video_id=video.id,
+            signer_id=current_user.id,
+            docusign_envelope_id=result["envelope_id"],
+            status="pending",
+        )
+    )
+    db.session.commit()
+    return redirect(result["signing_url"])
 
 
 @bp.route("/download")
@@ -314,7 +468,7 @@ def _can_access_video(video: Video, *, require_ready: bool) -> bool:
 @login_required
 @manager_or_admin
 def preview(video_id: int):
-    """Stream video inline for in-page preview (uploaded or ready)."""
+    """Stream video inline for in-page preview (any status the uploader can see)."""
     video = Video.query.get_or_404(video_id)
     if not _can_access_video(video, require_ready=False):
         abort(403)

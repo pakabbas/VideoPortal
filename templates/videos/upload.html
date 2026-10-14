@@ -3,8 +3,11 @@
 {% block content %}
 <section class="hero-card mb-1">
   <h1>Upload video</h1>
-  <p class="lede">Tag the farmer who recorded the clip. Consent is recorded with a timestamp and terms version {{ terms_version }}.</p>
+  <p class="lede">Tag the farmer who recorded the clip. After you submit, you will sign a DocuSign agreement for this video. Checkbox consent (terms v{{ terms_version }}) is also stored.</p>
 </section>
+{% if not docusign_ready %}
+<div class="flash flash-warning mb-1">DocuSign is not configured — uploads cannot complete until an admin finishes setup.</div>
+{% endif %}
 
 {% if not farmers %}
 <div class="empty">No farmers available. Create and link farmers first.</div>
@@ -37,7 +40,7 @@
       <span>I have read and accept these terms for this upload.</span>
     </label>
   </div>
-  <button class="btn" type="submit">Upload</button>
+  <button class="btn" type="submit" {% if not docusign_ready %}disabled{% endif %}>Upload &amp; sign with DocuSign</button>
 </form>
 {% endif %}
 {% endblock %}

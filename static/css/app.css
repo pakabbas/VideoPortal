@@ -344,6 +344,11 @@ th {
   color: var(--warn);
 }
 
+.badge-pending_signature {
+  background: #e4eef8;
+  color: #1f4f7a;
+}
+
 .badge-pending {
   background: var(--warn-bg);
   color: var(--warn);

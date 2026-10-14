@@ -59,13 +59,18 @@ class Video(db.Model):
     stored_path = db.Column(db.String(1024), nullable=False)
     farmer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     uploader_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    status = db.Column(db.Enum("uploaded", "ready"), nullable=False, default="uploaded")
+    status = db.Column(
+        db.Enum("pending_signature", "uploaded", "ready"),
+        nullable=False,
+        default="pending_signature",
+    )
     recorded_at = db.Column(db.DateTime, nullable=False)
     uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     ready_at = db.Column(db.DateTime, nullable=True)
 
     farmer = db.relationship("User", foreign_keys=[farmer_id])
     uploader = db.relationship("User", foreign_keys=[uploader_id])
+    agreements = db.relationship("VideoAgreement", back_populates="video", lazy="dynamic")
 
 
 class UploadConsent(db.Model):
@@ -91,6 +96,25 @@ class ManagerAgreement(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     manager = db.relationship("User", foreign_keys=[manager_id])
+
+
+class VideoAgreement(db.Model):
+    """Per-video DocuSign agreement (in addition to signup blanket agreement)."""
+
+    __tablename__ = "video_agreements"
+
+    id = db.Column(db.Integer, primary_key=True)
+    video_id = db.Column(db.Integer, db.ForeignKey("videos.id"), nullable=False)
+    signer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    docusign_envelope_id = db.Column(db.String(128), nullable=True)
+    status = db.Column(
+        db.Enum("pending", "completed", "declined"), nullable=False, default="pending"
+    )
+    signed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    video = db.relationship("Video", back_populates="agreements")
+    signer = db.relationship("User", foreign_keys=[signer_id])
 
 
 class Setting(db.Model):
